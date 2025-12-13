@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 from datetime import datetime, timedelta
+import os
 
 import boto3
 from botocore.config import Config
@@ -28,7 +29,11 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
             endpoint_url=None,
             retry_attempts=3,
             aws_access_key_id=None,
-            aws_secret_access_key=None
+            aws_secret_access_key=None,
+            signature_version=None,
+            use_ssl=True,
+            ca_bundle_path=os.getenv('DEFAULT_CA_BUNDLE', None),
+            skip_tls_verify=False,
     ):
         self.delete_through = delete_through
         self.write_through = write_through
@@ -39,6 +44,11 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
         else:
             self.compression = None
 
+        if ca_bundle_path:
+            verify = ca_bundle_path
+        else:
+            verify = not skip_tls_verify
+
         self.bucket_name = bucket_name
         self.bucket_path = bucket_path
         self.client = boto3.client(
@@ -46,13 +56,16 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
                 retries={
                     'mode': 'standard',
                     'max_attempts': retry_attempts,
-                }
+                },
+                signature_version=signature_version,
             ),
             region_name=region_name,
             service_name='s3',
             endpoint_url=endpoint_url,
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
+            use_ssl=use_ssl,
+            verify=verify,
         )
 
     def delete(self, id):

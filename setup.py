@@ -3,7 +3,8 @@
 from setuptools import setup
 
 install_requires = [
-    'boto3>=1.34.8',
+    'boto3>=1.42.8',
+    'certifi>=2025.11.12',
 ]
 
 setup(
