@@ -4,6 +4,7 @@ from typing import Any, Mapping
 from datetime import datetime, timedelta
 import os
 
+import urllib3
 import boto3
 from botocore.config import Config
 
@@ -48,6 +49,9 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
             verify = ca_bundle_path
         else:
             verify = not skip_tls_verify
+
+        if verify == False:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         self.bucket_name = bucket_name
         self.bucket_path = bucket_path
