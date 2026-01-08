@@ -1,12 +1,6 @@
 minVersion: 1.2.0
-changelog: CHANGELOG.md
-changelogPolicy: auto
-preReleaseCommand: bash scripts/bump-version.sh
-github:
-  owner: getsentry
-  repo: sentry-nodestore-s3
-artifactProvider:
-  name: github
+changelog:
+  policy: auto
 targets:
   - name: github
   - name: pypi
