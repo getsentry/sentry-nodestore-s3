@@ -1,0 +1,8 @@
+minVersion: 2.21.1
+changelog:
+  policy: auto
+targets:
+  - name: github
+  - name: pypi
+  - name: sentry-pypi
+    internalPypiRepo: getsentry/pypi
