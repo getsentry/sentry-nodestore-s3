@@ -143,7 +143,10 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
         )
 
     def __delete_from_bucket(self, id: str) -> None:
-        self.client.delete_object(
-            Key=self.__get_key_for_id(id),
-            Bucket=self.bucket_name,
-        )
+        try:
+            self.client.delete_object(
+                Key=self.__get_key_for_id(id),
+                Bucket=self.bucket_name,
+            )
+        except self.client.exceptions.NoSuchKey:
+            return
