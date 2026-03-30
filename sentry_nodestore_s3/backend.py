@@ -35,6 +35,8 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
             use_ssl=True,
             ca_bundle_path=os.getenv('DEFAULT_CA_BUNDLE', None),
             skip_tls_verify=False,
+            object_sharding=False,
+            object_sharding_fallback=False,
     ):
         self.delete_through = delete_through
         self.write_through = write_through
@@ -72,16 +74,19 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
             verify=verify,
         )
 
+        self.object_sharding = object_sharding
+        self.object_sharding_fallback = object_sharding_fallback
+
     def delete(self, id):
         if self.delete_through:
             super().delete(id)
-        self.__delete_from_bucket(id)
+        self.__delete_from_bucket(id, self.object_sharding)
         self._delete_cache_item(id)
 
     def _get_bytes(self, id: str) -> bytes | None:
         if self.read_through:
-            return self.__read_from_bucket(id) or super()._get_bytes(id)
-        return self.__read_from_bucket(id)
+            return self.__read_from_bucket(id, self.object_sharding) or super()._get_bytes(id)
+        return self.__read_from_bucket(id, self.object_sharding)
 
     def _get_bytes_multi(self, id_list: list[str]) -> dict[str, bytes | None]:
         return {id: self._get_bytes(id) for id in id_list}
@@ -91,7 +96,7 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
             super().delete_multi(id_list)
         # TODO: Maybe we should use the bulk delete API of the S3 client instead
         for id in id_list:
-            self.__delete_from_bucket(id)
+            self.__delete_from_bucket(id, self.object_sharding)
         self._delete_cache_items(id_list)
 
     def _set_bytes(self, id: str, data: Any, ttl: timedelta | None = None) -> None:
@@ -103,15 +108,20 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
         if self.delete_through:
             super().cleanup(cutoff_timestamp)
 
-    def __get_key_for_id(self, id: str) -> str:
+    def __get_key_for_id(self, id: str, sharding: bool = False) -> str:
         if self.bucket_path is None:
-            return id
-        return self.bucket_path + '/' + id
+            return self.__format_id(id, sharding)
+        return self.bucket_path + '/' + self.__format_id(id, sharding)
 
-    def __read_from_bucket(self, id: str) -> bytes | None:
+    def __format_id(self, id: str, sharding: bool = False) -> str:
+        if sharding:
+            return '/'.join(part for part in (id[:2], id[2:6], id[6:]) if part)
+        return id
+
+    def __read_from_bucket(self, id: str, sharding: bool = False) -> bytes | None:
         try:
             obj = self.client.get_object(
-                Key=self.__get_key_for_id(id),
+                Key=self.__get_key_for_id(id, sharding),
                 Bucket=self.bucket_name,
             )
 
@@ -121,6 +131,8 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
 
             return codec.decode(data) if codec else data
         except self.client.exceptions.NoSuchKey:
+            if sharding and self.object_sharding_fallback:
+                return self.__read_from_bucket(id, False)
             return None
 
     def __write_to_bucket(self, id: str, data: Any) -> None:
@@ -136,17 +148,20 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
                 content_encoding = self.compression
 
         self.client.put_object(
-            Key=self.__get_key_for_id(id),
+            Key=self.__get_key_for_id(id, self.object_sharding),
             Body=data,
             Bucket=self.bucket_name,
             ContentEncoding=content_encoding,
         )
 
-    def __delete_from_bucket(self, id: str) -> None:
+    def __delete_from_bucket(self, id: str, sharding: bool = False) -> None:
         try:
             self.client.delete_object(
-                Key=self.__get_key_for_id(id),
+                Key=self.__get_key_for_id(id, sharding),
                 Bucket=self.bucket_name,
             )
         except self.client.exceptions.NoSuchKey:
-            return
+            pass
+
+        if sharding and self.object_sharding_fallback:
+            self.__delete_from_bucket(id, False)
