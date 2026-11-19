@@ -127,7 +127,11 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
 
             data = obj.get('Body').read()
 
-            codec = self.compression_strategies.get(obj.get('ContentEncoding'))
+            marker = obj.get('Metadata', {}).get('sentry-codec')
+            if marker is None:
+                codec = self.compression_strategies.get(obj.get('ContentEncoding'))
+            else:
+                codec = self.compression_strategies[marker]
 
             return codec.decode(data) if codec else data
         except self.client.exceptions.NoSuchKey:
@@ -147,11 +151,16 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
                 data = compressed_data
                 content_encoding = self.compression
 
+        if self.bucket_name.endswith('--x-s3'):
+            encoding_options = {'Metadata': {'sentry-codec': content_encoding}} if content_encoding else {}
+        else:
+            encoding_options = {'ContentEncoding': content_encoding}
+
         self.client.put_object(
             Key=self.__get_key_for_id(id, self.object_sharding),
             Body=data,
             Bucket=self.bucket_name,
-            ContentEncoding=content_encoding,
+            **encoding_options,
         )
 
     def __delete_from_bucket(self, id: str, sharding: bool = False) -> None:
