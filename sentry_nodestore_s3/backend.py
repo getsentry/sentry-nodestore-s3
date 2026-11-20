@@ -151,6 +151,8 @@ class S3PassthroughDjangoNodeStorage(DjangoNodeStorage, NodeStorage):
                 data = compressed_data
                 content_encoding = self.compression
 
+        # AWS directory bucket names end in --<zone-id>--x-s3.
+        # https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html
         if self.bucket_name.endswith('--x-s3'):
             encoding_options = {'Metadata': {'sentry-codec': content_encoding}} if content_encoding else {}
         else:
